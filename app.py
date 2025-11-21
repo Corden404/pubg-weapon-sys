@@ -1,196 +1,321 @@
 import streamlit as st
 import pandas as pd
 import hashlib
+import os
+import joblib
+import numpy as np
+import librosa
+from datetime import datetime
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
-from datetime import datetime
 
 # ==========================================
-# 1. 基础配置与工具函数
+# 0. 全局配置
 # ==========================================
-st.set_page_config(page_title="PUBG 武器管理系统", page_icon="🔫", layout="wide")
+st.set_page_config(
+    page_title="PUBG 武器管理与识别系统",
+    page_icon="🔫",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ==========================================
+# 1. 核心工具函数 (数据库 & AI)
+# ==========================================
 
 @st.cache_resource
 def init_connection():
-    """连接数据库"""
+    """初始化 MongoDB 连接"""
     try:
+        # 从 secrets.toml 读取配置
         uri = st.secrets["mongo"]["uri"]
         return MongoClient(uri, server_api=ServerApi('1'))
     except Exception as e:
         st.error(f"数据库连接失败: {e}")
         return None
 
+@st.cache_resource
+def load_model():
+    """加载训练好的 AI 模型"""
+    model_path = "data/processed/weapon_classifier.pkl"
+    if os.path.exists(model_path):
+        try:
+            return joblib.load(model_path)
+        except Exception as e:
+            st.error(f"模型文件损坏: {e}")
+            return None
+    return None
+
+def extract_features_for_prediction(audio_file):
+    """
+    AI 核心：提取音频特征
+    注意：必须与训练脚本 (extract_features.py) 的逻辑完全一致
+    """
+    SAMPLE_RATE = 22050
+    DURATION = 2.0
+    N_MFCC = 13
+    
+    try:
+        # librosa 可以直接读取 streamlit 上传的文件对象
+        y, sr = librosa.load(audio_file, sr=SAMPLE_RATE, duration=DURATION)
+        
+        # 填充 (Padding) - 如果音频短于 2 秒
+        if len(y) < SAMPLE_RATE * DURATION:
+            padding = int(SAMPLE_RATE * DURATION) - len(y)
+            y = np.pad(y, (0, padding), 'constant')
+
+        # 提取特征 (顺序必须严格一致: ZCR -> RMS -> Centroid -> MFCC)
+        zcr = np.mean(librosa.feature.zero_crossing_rate(y))
+        rms = np.mean(librosa.feature.rms(y=y))
+        cent = np.mean(librosa.feature.spectral_centroid(y=y, sr=sr))
+        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=N_MFCC)
+        mfcc_mean = np.mean(mfcc, axis=1)
+        
+        # 组装特征向量
+        features = [zcr, rms, cent]
+        features.extend(mfcc_mean)
+        
+        # 返回二维数组 (1, N_features) 以符合 scikit-learn 输入格式
+        return np.array([features]) 
+    except Exception as e:
+        st.error(f"特征提取失败: {e}")
+        return None
+
 def make_hash(password):
-    """对密码进行 SHA256 加密 (作业加分项: 密码加密保存)"""
+    """密码加密 (SHA256)"""
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def check_hashes(password, hashed_text):
-    """校验密码"""
+    """密码校验"""
     if make_hash(password) == hashed_text:
         return True
     return False
 
-# 初始化数据库
+# 初始化资源
 client = init_connection()
 if not client:
     st.stop()
 db = client.pubg_sys
 
 # ==========================================
-# 2. 身份验证模块 (Authentication)
+# 2. 登录与注册界面
 # ==========================================
 def login_page():
-    st.header("🔐 PUBG 系统登录")
+    st.markdown("<h1 style='text-align: center;'>🔐 PUBG 综合实训系统</h1>", unsafe_allow_html=True)
     
-    tab1, tab2 = st.tabs(["登录", "注册新玩家"])
-    
-    with tab1:
-        username = st.text_input("学号 (Student ID)")
-        password = st.text_input("密码", type='password') # 作业要求: 密码遮蔽
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        tab1, tab2 = st.tabs(["登录账号", "注册新用户"])
         
-        if st.button("登录"):
-            user = db.users.find_one({"student_id": username})
-            if user:
-                if check_hashes(password, user['password']):
-                    st.session_state['logged_in'] = True
-                    st.session_state['user_info'] = user
-                    st.session_state['username'] = username
-                    st.success("登录成功！")
-                    st.rerun()
+        with tab1:
+            username = st.text_input("学号 (Student ID)")
+            password = st.text_input("密码", type='password')
+            
+            if st.button("登录", use_container_width=True):
+                user = db.users.find_one({"student_id": username})
+                if user:
+                    if check_hashes(password, user['password']):
+                        # 设置 Session 状态
+                        st.session_state['logged_in'] = True
+                        st.session_state['user_info'] = user
+                        st.session_state['username'] = username
+                        st.success("登录成功！")
+                        st.rerun()
+                    else:
+                        st.error("❌ 密码错误")
                 else:
-                    st.error("密码错误")
-            else:
-                st.error("该学号未注册")
+                    st.error("❌ 该学号未注册")
 
-    with tab2:
-        new_user = st.text_input("输入学号注册")
-        new_pass = st.text_input("设置密码", type='password')
-        
-        if st.button("注册"):
-            if db.users.find_one({"student_id": new_user}):
-                st.warning("该学号已存在！")
-            else:
-                # 创建新用户结构
-                user_data = {
-                    "student_id": new_user,
-                    "password": make_hash(new_pass),
-                    "inventory": [], # 初始背包为空
-                    "created_at": datetime.now()
-                }
-                db.users.insert_one(user_data)
-                st.success("注册成功！请切换到登录标签进行登录。")
+        with tab2:
+            new_user = st.text_input("输入学号注册")
+            new_pass = st.text_input("设置密码", type='password')
+            confirm_pass = st.text_input("确认密码", type='password')
+            
+            if st.button("立即注册", use_container_width=True):
+                if new_pass != confirm_pass:
+                    st.error("两次密码输入不一致")
+                elif db.users.find_one({"student_id": new_user}):
+                    st.warning("该学号已存在！")
+                else:
+                    user_data = {
+                        "student_id": new_user,
+                        "password": make_hash(new_pass),
+                        "inventory": [],
+                        "created_at": datetime.now()
+                    }
+                    db.users.insert_one(user_data)
+                    st.success("✅ 注册成功！请切换到登录标签进行登录。")
 
 # ==========================================
-# 3. 主应用程序 (登录后可见)
+# 3. 主应用程序 (登录后)
 # ==========================================
 def main_app():
     user = st.session_state['user_info']
     
-    # 侧边栏：用户信息
+    # --- 侧边栏 ---
     with st.sidebar:
-        st.write(f"👤 当前玩家: **{user['student_id']}**")
-        if st.button("退出登录"):
+        st.image("https://img.icons8.com/color/96/pubg.png", width=80)
+        st.write(f"👋 欢迎回来, **{user['student_id']}**")
+        
+        st.divider()
+        if st.button("🚪 退出登录", use_container_width=True):
             st.session_state['logged_in'] = False
             st.rerun()
-        st.divider()
-        st.info("💡 提示：去'武器图鉴'把枪添加到你的背包里。")
+            
+        st.info("提示：\n1. 在'武器图鉴'添加装备\n2. 在'声音识别'测试模型")
 
     st.title("🔫 PUBG 武器指挥中心")
     
-    # 页面分栏
-    tab_inventory, tab_catalog, tab_admin = st.tabs(["🎒 我的背包", "📚 武器图鉴(全)", "🛠️ 管理员修改"])
+    # --- 主要功能区 ---
+    tab_inventory, tab_catalog, tab_admin, tab_ai = st.tabs([
+        "🎒 我的背包", 
+        "📚 武器图鉴", 
+        "🛠️ 管理员", 
+        "🎙️ 声音识别(AI)"
+    ])
 
-    # --- TAB 1: 我的背包 (Inventory) ---
+    # TAB 1: 背包系统
     with tab_inventory:
-        # 实时从数据库拉取最新的用户信息
+        # 实时拉取数据
         current_user = db.users.find_one({"student_id": user['student_id']})
         inventory = current_user.get('inventory', [])
         
         if not inventory:
-            st.warning("你的背包是空的！快去'武器图鉴'进货吧。")
+            st.info("🎒 背包空空如也，快去进货吧！")
         else:
-            # 转换为 DataFrame 展示
+            # 统计数据
             df_inv = pd.DataFrame(inventory)
-            st.dataframe(df_inv, use_container_width=True)
-            
-            # 作业要求: 统计剩余子弹
             total_ammo = df_inv['ammo_count'].sum()
             
-            col1, col2 = st.columns(2)
-            col1.metric("携带武器数量", len(inventory))
-            col2.metric("剩余子弹总数", total_ammo)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("武器数量", len(inventory))
+            c2.metric("总弹药量", total_ammo)
+            c3.metric("最后更新", datetime.now().strftime("%H:%M"))
             
-            # 功能: 丢弃武器
-            weapon_to_remove = st.selectbox("选择要丢弃的武器", [item['weapon_name'] for item in inventory])
-            if st.button("🗑️ 丢弃选中武器"):
+            st.dataframe(df_inv, use_container_width=True)
+            
+            # 丢弃功能
+            with st.expander("🗑️ 丢弃武器"):
+                weapon_to_remove = st.selectbox("选择要丢弃的物品", [item['weapon_name'] for item in inventory])
+                if st.button("确认丢弃"):
+                    db.users.update_one(
+                        {"student_id": user['student_id']},
+                        {"$pull": {"inventory": {"weapon_name": weapon_to_remove}}}
+                    )
+                    st.success(f"已丢弃 {weapon_to_remove}")
+                    st.rerun()
+
+    # TAB 2: 武器图鉴
+    with tab_catalog:
+        weapons = list(db.game_weapons.find({}, {"_id": 0}))
+        if not weapons:
+            st.warning("数据库中没有武器数据，请先运行 data_processor.py 脚本导入数据。")
+        else:
+            df_weapons = pd.DataFrame(weapons)
+            
+            col_sort, col_search = st.columns(2)
+            with col_sort:
+                sort_col = st.selectbox("排序方式", ["damage", "name", "type"])
+            with col_search:
+                search_term = st.text_input("🔍 搜索武器", "")
+            
+            # 筛选逻辑
+            if search_term:
+                df_weapons = df_weapons[df_weapons['name'].str.contains(search_term, case=False)]
+            
+            df_sorted = df_weapons.sort_values(by=sort_col, ascending=False)
+            st.dataframe(df_sorted, use_container_width=True)
+            
+            st.divider()
+            st.write("### 📥 装备补给")
+            c1, c2 = st.columns([2, 1])
+            with c1:
+                selected_weapon = st.selectbox("选择武器", df_sorted['name'].unique())
+            with c2:
+                ammo_count = st.number_input("子弹数量", min_value=1, value=30)
+            
+            if st.button("放入背包", type="primary"):
+                item = {
+                    "weapon_name": selected_weapon,
+                    "ammo_count": ammo_count,
+                    "added_at": datetime.now()
+                }
                 db.users.update_one(
                     {"student_id": user['student_id']},
-                    {"$pull": {"inventory": {"weapon_name": weapon_to_remove}}}
+                    {"$push": {"inventory": item}}
                 )
-                st.success(f"已丢弃 {weapon_to_remove}")
-                st.rerun()
+                st.toast(f"✅ {selected_weapon} 已加入背包！")
 
-    # --- TAB 2: 武器图鉴 (Global Catalog) ---
-    with tab_catalog:
-        st.subheader("武器库总览")
-        # 读取公共武器库
-        weapons = list(db.game_weapons.find({}, {"_id": 0})) # 不显示 _id
-        df_weapons = pd.DataFrame(weapons)
-        
-        # 作业要求: 排序与筛选
-        sort_col = st.selectbox("排序依据", ["damage", "name", "type"])
-        df_sorted = df_weapons.sort_values(by=sort_col, ascending=False)
-        
-        st.dataframe(df_sorted, use_container_width=True)
-        
-        st.divider()
-        st.write("### 📥 装备武器")
-        col_add1, col_add2 = st.columns(2)
-        with col_add1:
-            selected_weapon = st.selectbox("选择一把武器加入背包", df_sorted['name'].unique())
-        with col_add2:
-            ammo_count = st.number_input("携带子弹数量", min_value=1, value=30)
-        
-        if st.button("放入背包"):
-            # 构建背包物品数据
-            item = {
-                "weapon_name": selected_weapon,
-                "ammo_count": ammo_count,
-                "added_at": datetime.now()
-            }
-            # 更新数据库
-            db.users.update_one(
-                {"student_id": user['student_id']},
-                {"$push": {"inventory": item}}
-            )
-            st.toast(f"✅ {selected_weapon} 已加入背包！")
-
-    # --- TAB 3: 管理员修改 (CRUD) ---
+    # TAB 3: 管理员
     with tab_admin:
-        st.warning("⚠️ 这里修改的是全局游戏数据，会影响所有玩家！")
-        
-        # 选择要修改的武器
-        edit_target = st.selectbox("选择要修改数据的武器", df_weapons['name'].unique())
-        
-        # 获取当前数据
-        current_data = db.game_weapons.find_one({"name": edit_target})
-        
-        with st.form("edit_form"):
-            new_damage = st.number_input("修改伤害 (Damage)", value=int(current_data.get('damage', 0)))
-            new_type = st.text_input("修改类型 (Type)", value=current_data.get('type', 'Unknown'))
+        st.warning("⚠️ 管理员区域：修改将影响所有玩家的图鉴数据")
+        if weapons:
+            edit_target = st.selectbox("选择要编辑的武器", df_weapons['name'].unique())
+            current_data = db.game_weapons.find_one({"name": edit_target})
             
-            if st.form_submit_button("💾 保存修改"):
-                db.game_weapons.update_one(
-                    {"name": edit_target},
-                    {"$set": {"damage": new_damage, "type": new_type}}
-                )
-                st.success(f"{edit_target} 数据已更新！")
-                st.rerun()
+            with st.form("admin_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    new_damage = st.number_input("伤害数值", value=int(current_data.get('damage', 0)))
+                with c2:
+                    new_type = st.text_input("武器类型", value=current_data.get('type', 'Unknown'))
+                
+                if st.form_submit_button("💾 保存更改"):
+                    db.game_weapons.update_one(
+                        {"name": edit_target},
+                        {"$set": {"damage": new_damage, "type": new_type}}
+                    )
+                    st.success("更新成功！")
+                    st.rerun()
+
+    # TAB 4: AI 声音识别
+    with tab_ai:
+        st.header("🤖 智能枪声识别 (Level A/B)")
+        
+        model_data = load_model()
+        if model_data is None:
+            st.error("❌ 未检测到模型文件！请先运行 'scripts/train_model.py' 进行训练。")
+        else:
+            clf = model_data['model']
+            st.success(f"✅ AI 模型已加载 (特征维度: {len(model_data['feature_names'])})")
+            
+            uploaded_audio = st.file_uploader("上传 MP3 录音文件进行分析", type=["mp3"])
+            
+            if uploaded_audio is not None:
+                st.audio(uploaded_audio, format='audio/mp3')
+                
+                if st.button("🔍 开始识别分析", type="primary"):
+                    with st.spinner("正在提取 MFCC 特征并进行推理..."):
+                        # 1. 提取特征
+                        X_input = extract_features_for_prediction(uploaded_audio)
+                        
+                        if X_input is not None:
+                            # 2. 预测
+                            prediction = clf.predict(X_input)[0]
+                            probs = clf.predict_proba(X_input)[0]
+                            classes = clf.classes_
+                            
+                            # 3. 结果展示
+                            st.divider()
+                            res_col1, res_col2 = st.columns([1, 2])
+                            
+                            with res_col1:
+                                st.metric("AI 预测结果", prediction)
+                                max_prob = np.max(probs)
+                                st.progress(max_prob, text=f"置信度: {max_prob:.1%}")
+                            
+                            with res_col2:
+                                # 绘制概率分布图
+                                sorted_indices = np.argsort(probs)[::-1][:5] # 取前5
+                                chart_data = pd.DataFrame({
+                                    "Weapon": classes[sorted_indices],
+                                    "Probability": probs[sorted_indices]
+                                })
+                                st.bar_chart(chart_data.set_index("Weapon"), color="#ff4b4b")
 
 # ==========================================
-# 4. 程序入口控制
+# 4. 程序入口
 # ==========================================
-# 检查 Session 状态，判断显示登录页还是主页
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
