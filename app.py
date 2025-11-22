@@ -268,50 +268,70 @@ def main_app():
                     st.success("更新成功！")
                     st.rerun()
 
-    # TAB 4: AI 声音识别
+    # TAB 4: AI 声音识别 (增加距离和方位)
     with tab_ai:
-        st.header("🤖 智能枪声识别 (Level A/B)")
+        st.header("🤖 智能枪声识别 (Level B - 多任务)")
         
-        model_data = load_model()
-        if model_data is None:
-            st.error("❌ 未检测到模型文件！请先运行 'scripts/train_model.py' 进行训练。")
+        package = load_model() # 加载回来的是那个大字典
+        if package is None:
+            st.error("❌ 未检测到模型文件！请先运行 'scripts/train_model.py'")
         else:
-            clf = model_data['model']
-            st.success(f"✅ AI 模型已加载 (特征维度: {len(model_data['feature_names'])})")
+            # 获取模型字典
+            models = package['models']
+            feature_names = package['feature_names']
             
-            uploaded_audio = st.file_uploader("上传 MP3 录音文件进行分析", type=["mp3"])
+            st.success(f"✅ 多任务模型已加载 (支持: 武器/距离/方位)")
+            
+            uploaded_audio = st.file_uploader("上传 MP3 录音文件", type=["mp3"])
             
             if uploaded_audio is not None:
                 st.audio(uploaded_audio, format='audio/mp3')
                 
-                if st.button("🔍 开始识别分析", type="primary"):
-                    with st.spinner("正在提取 MFCC 特征并进行推理..."):
+                if st.button("🔍 全方位分析", type="primary"):
+                    with st.spinner("正在进行多维度推理..."):
                         # 1. 提取特征
                         X_input = extract_features_for_prediction(uploaded_audio)
                         
                         if X_input is not None:
-                            # 2. 预测
-                            prediction = clf.predict(X_input)[0]
-                            probs = clf.predict_proba(X_input)[0]
-                            classes = clf.classes_
+                            # 2. 分别预测三个任务
+                            pred_weapon = models['weapon'].predict(X_input)[0]
+                            pred_dist = models['distance'].predict(X_input)[0]
+                            pred_dir = models['direction'].predict(X_input)[0]
                             
-                            # 3. 结果展示
+                            # 获取武器的置信度
+                            prob_weapon = np.max(models['weapon'].predict_proba(X_input)[0])
+                            
+                            # 3. 结果展示 (三列布局)
                             st.divider()
-                            res_col1, res_col2 = st.columns([1, 2])
+                            st.subheader("🎯 分析报告")
                             
-                            with res_col1:
-                                st.metric("AI 预测结果", prediction)
-                                max_prob = np.max(probs)
-                                st.progress(max_prob, text=f"置信度: {max_prob:.1%}")
+                            c1, c2, c3 = st.columns(3)
                             
-                            with res_col2:
-                                # 绘制概率分布图
-                                sorted_indices = np.argsort(probs)[::-1][:5] # 取前5
-                                chart_data = pd.DataFrame({
-                                    "Weapon": classes[sorted_indices],
-                                    "Probability": probs[sorted_indices]
-                                })
-                                st.bar_chart(chart_data.set_index("Weapon"), color="#ff4b4b")
+                            with c1:
+                                st.info("🔫 武器型号")
+                                st.markdown(f"### {pred_weapon}")
+                                st.caption(f"置信度: {prob_weapon:.1%}")
+                            
+                            with c2:
+                                st.warning("📏 射击距离")
+                                st.markdown(f"### {pred_dist}")
+                            
+                            with c3:
+                                st.success("🧭 射击方位")
+                                st.markdown(f"### {pred_dir}")
+                                
+                            # 4. 依然保留武器概率图
+                            st.divider()
+                            st.write("武器类型概率分布:")
+                            probs = models['weapon'].predict_proba(X_input)[0]
+                            classes = models['weapon'].classes_
+                            sorted_indices = np.argsort(probs)[::-1][:5]
+                            
+                            chart_data = pd.DataFrame({
+                                "Weapon": classes[sorted_indices],
+                                "Probability": probs[sorted_indices]
+                            })
+                            st.bar_chart(chart_data.set_index("Weapon"))
 
 # ==========================================
 # 4. 程序入口
