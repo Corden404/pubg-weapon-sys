@@ -9,6 +9,7 @@ from datetime import datetime
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 import logging
+from gradio_client import Client, handle_file
 
 # ==========================================
 # 0. 全局配置
@@ -66,10 +67,14 @@ class Weapon:
 
 @st.cache_resource
 def init_connection():
-    """初始化 MongoDB 连接"""
     try:
-        # 从 secrets.toml 读取配置
-        uri = st.secrets["mongo"]["uri"]
+        # 优先尝试读取环境变量 (Codespaces Secret)
+        if "MONGO_URI" in os.environ:
+            uri = os.environ["MONGO_URI"]
+        else:
+            # 其次尝试读取 secrets.toml (本地文件)
+            uri = st.secrets["mongo"]["uri"]
+        
         return MongoClient(uri, server_api=ServerApi('1'))
     except Exception as e:
         st.error(f"数据库连接失败: {e}")
@@ -338,71 +343,107 @@ def main_app():
                     st.success("更新成功！")
                     st.rerun()
 
-    # TAB 4: AI 声音识别 (增加距离和方位)
+    # TAB 4: AI (混合架构版)
     with tab_ai:
-        st.header("🤖 智能枪声识别 (Level B - 多任务)")
+        st.header("☁️ 云端 AI 识别 ")
+        st.info("💡 架构说明：利用云端 CNN 进行高精度武器分类，同时利用本地 RF 模型补充距离与方位信息。")
+
+        # Hugging Face 地址
+        HF_SPACE_ID = "Corden/pubg-sound-api" # <--- 确认是你的地址
         
-        package = load_model() # 加载回来的是那个大字典
-        if package is None:
-            st.error("❌ 未检测到模型文件！请先运行 'scripts/train_model.py'")
-        else:
-            # 获取模型字典
-            models = package['models']
-            feature_names = package['feature_names']
+        uploaded_audio = st.file_uploader("上传录音 (MP3/WAV)", type=["mp3", "wav"])
+        
+        if uploaded_audio is not None:
+            st.audio(uploaded_audio)
             
-            st.success(f"✅ 多任务模型已加载 (支持: 武器/距离/方位)")
-            
-            uploaded_audio = st.file_uploader("上传 MP3 录音文件", type=["mp3"])
-            
-            if uploaded_audio is not None:
-                st.audio(uploaded_audio, format='audio/mp3')
+            if st.button("🚀 启动混合推理引擎", type="primary"):
+                # 准备容器显示结果
+                col_main, col_details = st.columns([1, 2])
                 
-                if st.button("🔍 全方位分析", type="primary"):
-                    logging.info(f"用户 {user['student_id']} 上传音频进行多维度推理")
-                    with st.spinner("正在进行多维度推理..."):
-                        # 1. 提取特征
-                        X_input = extract_features_for_prediction(uploaded_audio)
-                        
-                        if X_input is not None:
-                            # 2. 分别预测三个任务
-                            pred_weapon = models['weapon'].predict(X_input)[0]
-                            pred_dist = models['distance'].predict(X_input)[0]
-                            pred_dir = models['direction'].predict(X_input)[0]
+                # --- 1. 云端推理 (负责武器分类) ---
+                cloud_result = None
+                with col_main:
+                    with st.status("正在连接 Hugging Face...", expanded=True) as status:
+                        try:
+                            client = Client(HF_SPACE_ID)
                             
-                            # 获取武器的置信度
-                            prob_weapon = np.max(models['weapon'].predict_proba(X_input)[0])
+                            # 写入临时文件
+                            with open("temp_upload.mp3", "wb") as f:
+                                f.write(uploaded_audio.getbuffer())
                             
-                            # 3. 结果展示 (三列布局)
-                            st.divider()
-                            st.subheader("🎯 分析报告")
+                            # 调用 API
+                            status.write("📤 发送音频数据...")
+                            result = client.predict(
+                                handle_file("temp_upload.mp3"),
+                                api_name="/predict_weapon"
+                            )
+                            status.write("📥 接收神经网络张量...")
                             
-                            c1, c2, c3 = st.columns(3)
-                            
-                            with c1:
-                                st.info("🔫 武器型号")
-                                st.markdown(f"### {pred_weapon}")
-                                st.caption(f"置信度: {prob_weapon:.1%}")
-                            
-                            with c2:
-                                st.warning("📏 射击距离")
-                                st.markdown(f"### {pred_dist}")
-                            
-                            with c3:
-                                st.success("🧭 射击方位")
-                                st.markdown(f"### {pred_dir}")
+                            # 解析云端结果 (假设返回的是 Label 字典)
+                            # Gradio Client 返回格式通常是: {'label': 'ak', 'confidences': [...]} 或 直接字典
+                            if isinstance(result, dict) and 'confidences' in result:
+                                # 提取 Top 1
+                                cloud_weapon = result['label']
+                                cloud_conf = result['confidences'][0]['confidence']
+                            elif isinstance(result, dict):
+                                # 兼容直接返回字典的情况
+                                cloud_weapon = max(result, key=result.get)
+                                cloud_conf = result[cloud_weapon]
+                            else:
+                                cloud_weapon = "解析错误"
+                                cloud_conf = 0.0
                                 
-                            # 4. 依然保留武器概率图
-                            st.divider()
-                            st.write("武器类型概率分布:")
-                            probs = models['weapon'].predict_proba(X_input)[0]
-                            classes = models['weapon'].classes_
-                            sorted_indices = np.argsort(probs)[::-1][:5]
+                            cloud_result = (cloud_weapon, cloud_conf)
+                            status.update(label="✅ 云端推理完成", state="complete", expanded=False)
                             
-                            chart_data = pd.DataFrame({
-                                "Weapon": classes[sorted_indices],
-                                "Probability": probs[sorted_indices]
-                            })
-                            st.bar_chart(chart_data.set_index("Weapon"))
+                        except Exception as e:
+                            status.update(label="❌ 云端连接失败", state="error")
+                            st.error(f"API 错误: {e}")
+
+                # --- 2. 本地推理 (负责距离和方位) ---
+                local_dist = "N/A"
+                local_dir = "N/A"
+                
+                # 加载本地模型 (如果存在)
+                try:
+                    local_package = load_model()
+                    if local_package:
+                        # 提取特征
+                        X_input = extract_features_for_prediction(uploaded_audio)
+                        if X_input is not None:
+                            # 只预测距离和方位
+                            local_dist = local_package['models']['distance'].predict(X_input)[0]
+                            local_dir = local_package['models']['direction'].predict(X_input)[0]
+                except Exception:
+                    pass # 如果本地模型坏了，就忽略，只显示云端结果
+
+                # --- 3. 合并展示结果 ---
+                st.divider()
+                st.subheader("🎯 战术分析报告")
+                
+                c1, c2, c3 = st.columns(3)
+                
+                with c1:
+                    st.caption("🔫 武器型号 (Cloud CNN)")
+                    if cloud_result:
+                        st.markdown(f"## {cloud_result[0].upper()}")
+                        st.progress(cloud_result[1], text=f"置信度: {cloud_result[1]:.1%}")
+                    else:
+                        st.error("获取失败")
+                
+                with c2:
+                    st.caption("📏 射击距离 (Local RF)")
+                    st.markdown(f"## {local_dist}")
+                
+                with c3:
+                    st.caption("🧭 射击方位 (Local RF)")
+                    st.markdown(f"## {local_dir}")
+
+                # 展示图片
+                if cloud_result:
+                    img_path = f"images/{cloud_result[0]}.png"
+                    if os.path.exists(img_path):
+                        st.image(img_path, caption=f"识别为: {cloud_result[0]}", width=200)
 
 # ==========================================
 # 4. 程序入口

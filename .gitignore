@@ -210,4 +210,4 @@ __marimo__/
 # 忽略大数据文件
 data/raw/
 data/audio/
-data/processed/*.csv
+data/processed/*.csvtemp_upload.mp3
