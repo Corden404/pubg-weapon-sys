@@ -8,6 +8,7 @@ import librosa
 from datetime import datetime
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
+import logging
 
 # ==========================================
 # 0. 全局配置
@@ -19,9 +20,49 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("system.log", encoding="utf-8"), #存入文件
+        logging.StreamHandler() #输出到终端
+    ]
+)
+logging.info("系统启动")
+
 # ==========================================
 # 1. 核心工具函数 (数据库 & AI)
 # ==========================================
+
+class Weapon:
+    def __init__(self, name, w_type, damage, headshot_rate, fire_rate, range_m, ammo_type, mag_size, reload_time, image_url=""):
+        self.name = name                # 名称 (M416)
+        self.w_type = w_type            # 类型 (突击步枪)
+        self.damage = damage            # 基础伤害
+        self.headshot_rate = headshot_rate # 爆头倍率 (2.3)
+        self.fire_rate = fire_rate      # 射速 (0.086s)
+        self.range_m = range_m          # 有效射程
+        self.ammo_type = ammo_type      # 子弹类型
+        self.mag_size = mag_size        # 弹匣容量
+        self.reload_time = reload_time  # 换弹时间
+        self.image_url = image_url      # 图片链接
+
+    def to_dict(self):
+        """转为字典以存入 MongoDB"""
+        return {
+            "name": self.name,
+            "type": self.w_type,
+            "damage": self.damage,
+            "stats": {  # 我们可以把详细属性折叠在一个子字典里，保持整洁
+                "headshot_rate": self.headshot_rate,
+                "fire_rate": self.fire_rate,
+                "range": self.range_m,
+                "mag_size": self.mag_size,
+                "reload_time": self.reload_time
+            },
+            "ammo_type": self.ammo_type,
+            "image_url": self.image_url
+        }
 
 @st.cache_resource
 def init_connection():
@@ -115,6 +156,7 @@ def login_page():
                 user = db.users.find_one({"student_id": username})
                 if user:
                     if check_hashes(password, user['password']):
+                        logging.info(f"用户 {username} 登录成功") #记录日志
                         # 设置 Session 状态
                         st.session_state['logged_in'] = True
                         st.session_state['user_info'] = user
@@ -123,9 +165,10 @@ def login_page():
                         st.rerun()
                     else:
                         st.error("❌ 密码错误")
+                        logging.warning(f"用户 {username} 登录失败，密码错误")
                 else:
                     st.error("❌ 该学号未注册")
-
+                    logging.warning(f"登录失败，学号 {username} 未注册")
         with tab2:
             new_user = st.text_input("输入学号注册")
             new_pass = st.text_input("设置密码", type='password')
@@ -144,6 +187,7 @@ def login_page():
                         "created_at": datetime.now()
                     }
                     db.users.insert_one(user_data)
+                    logging.info(f"新用户注册成功: {new_user}") #记录日志
                     st.success("✅ 注册成功！请切换到登录标签进行登录。")
 
 # ==========================================
@@ -159,6 +203,7 @@ def main_app():
         
         st.divider()
         if st.button("🚪 退出登录", use_container_width=True):
+            logging.info(f"用户 {user['student_id']} 退出登录") #记录日志
             st.session_state['logged_in'] = False
             st.rerun()
             
@@ -198,14 +243,16 @@ def main_app():
             with st.expander("🗑️ 丢弃武器"):
                 weapon_to_remove = st.selectbox("选择要丢弃的物品", [item['weapon_name'] for item in inventory])
                 if st.button("确认丢弃"):
+                    logging.info(f"用户 {user['student_id']} 丢弃武器 {weapon_to_remove}")
                     db.users.update_one(
                         {"student_id": user['student_id']},
                         {"$pull": {"inventory": {"weapon_name": weapon_to_remove}}}
                     )
                     st.success(f"已丢弃 {weapon_to_remove}")
+                    logging.info(f"用户 {user['student_id']} 丢弃武器 {weapon_to_remove}")
                     st.rerun()
 
-    # TAB 2: 武器图鉴
+        # TAB 2: 武器图鉴
     with tab_catalog:
         weapons = list(db.game_weapons.find({}, {"_id": 0}))
         if not weapons:
@@ -224,7 +271,29 @@ def main_app():
                 df_weapons = df_weapons[df_weapons['name'].str.contains(search_term, case=False)]
             
             df_sorted = df_weapons.sort_values(by=sort_col, ascending=False)
-            st.dataframe(df_sorted, use_container_width=True)
+            
+            if 'stats' in df_sorted.columns:
+                # 把 stats 字典里的字段拆分出来变成单独的列
+                stats_df = pd.json_normalize(df_sorted['stats'])
+                df_display = pd.concat([df_sorted.drop(columns=['stats']), stats_df], axis=1)
+                
+                # 重命名一下列名，显示中文
+                df_display = df_display.rename(columns={
+                    "name": "武器名称",
+                    "type": "武器类型", 
+                    "damage": "基础伤害",
+                    "ammo_type": "弹药类型",
+                    "headshot_rate": "爆头倍率",
+                    "fire_rate": "射速(s)",
+                    "range": "射程(m)",
+                    "mag_size": "弹夹容量",
+                    "reload_time": "换弹时间(s)"
+                })
+                
+                st.dataframe(df_display, use_container_width=True)
+            else:
+                # 如果没有 stats 列，直接显示原始数据（英文表头）
+                st.dataframe(df_sorted, use_container_width=True)
             
             st.divider()
             st.write("### 📥 装备补给")
@@ -235,6 +304,7 @@ def main_app():
                 ammo_count = st.number_input("子弹数量", min_value=1, value=30)
             
             if st.button("放入背包", type="primary"):
+                logging.info(f"用户 {user['student_id']} 将武器 {selected_weapon} 和弹药 {ammo_count} 放入背包")
                 item = {
                     "weapon_name": selected_weapon,
                     "ammo_count": ammo_count,
@@ -245,7 +315,7 @@ def main_app():
                     {"$push": {"inventory": item}}
                 )
                 st.toast(f"✅ {selected_weapon} 已加入背包！")
-
+        
     # TAB 3: 管理员
     with tab_admin:
         st.warning("⚠️ 管理员区域：修改将影响所有玩家的图鉴数据")
@@ -288,6 +358,7 @@ def main_app():
                 st.audio(uploaded_audio, format='audio/mp3')
                 
                 if st.button("🔍 全方位分析", type="primary"):
+                    logging.info(f"用户 {user['student_id']} 上传音频进行多维度推理")
                     with st.spinner("正在进行多维度推理..."):
                         # 1. 提取特征
                         X_input = extract_features_for_prediction(uploaded_audio)
