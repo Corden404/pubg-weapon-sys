@@ -1,6 +1,9 @@
 import streamlit as st
 from datetime import datetime
 from utils.database import get_db, make_hash, check_hashes
+from utils.logger import log_action, get_logger  # <--- 新增导入
+
+logger = get_logger()
 
 def render_login():
     st.markdown("<h1 style='text-align: center;'>🔐 PUBG 综合实训系统</h1>", unsafe_allow_html=True)
@@ -22,9 +25,15 @@ def render_login():
                     st.session_state['logged_in'] = True
                     st.session_state['user_info'] = user
                     st.session_state['username'] = username
+                    
+                    # --- 日志记录 ---
+                    log_action(db, username, "LOGIN", "用户登录成功")
+                    
                     st.success("登录成功！")
                     st.rerun()
                 else:
+                    # --- 日志记录 (安全审计) ---
+                    logger.warning(f"登录失败: 用户 {username} 密码错误或账号不存在")
                     st.error("❌ 账号或密码错误")
 
         with tab2:
@@ -37,6 +46,8 @@ def render_login():
                     st.error("两次密码输入不一致")
                 elif db.users.find_one({"student_id": new_user}):
                     st.warning("该学号已存在！")
+                    # --- 日志记录 ---
+                    logger.warning(f"注册失败: 学号 {new_user} 已存在")
                 else:
                     db.users.insert_one({
                         "student_id": new_user,
@@ -44,4 +55,7 @@ def render_login():
                         "inventory": [],
                         "created_at": datetime.now()
                     })
+                    # --- 日志记录 ---
+                    log_action(db, new_user, "REGISTER", "新用户注册成功")
+                    
                     st.success("✅ 注册成功！请登录。")

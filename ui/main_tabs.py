@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from utils.database import get_db
 from logic.ai_core import load_local_models, extract_features, predict_cloud
+from utils.logger import log_action
 
 def render_main_app():
     user = st.session_state['user_info']
@@ -59,6 +60,7 @@ def render_main_app():
                         {"$pull": {"inventory": {"weapon_name": to_remove}}}
                     )
                     st.toast(f"已丢弃 {to_remove}")
+                    log_action(db, user['student_id'], "INVENTORY_REMOVE", f"丢弃了 {to_remove}")
                     st.rerun()
         else:
             st.info("🎒 背包空空如也，快去图鉴进货吧！")
@@ -121,6 +123,7 @@ def render_main_app():
                             {"student_id": user['student_id']},
                             {"$push": {"inventory": item}}
                         )
+                        log_action(db, user['student_id'], "INVENTORY_ADD", {"item": row['name'], "ammo": ammo_val})
                         st.toast(f"✅ 已添加 {full_name} (x{ammo_val})")
             st.divider()
 
@@ -136,9 +139,10 @@ def render_main_app():
                     n_dmg = st.number_input("基础伤害", value=int(curr.get('damage', 0)))
                 with c2:
                     n_type = st.text_input("武器类型", value=curr.get('type', 'Unknown'))
-                    
                 if st.form_submit_button("💾 保存修改"):
                     db.game_weapons.update_one({"name": target}, {"$set": {"damage": n_dmg, "type": n_type}})
+                    # 日志记录（管理员修改）
+                    log_action(db, user['student_id'], "ADMIN_MODIFY", {"target": target, "changes": {"damage": n_dmg, "type": n_type}})
                     st.success("数据库已更新")
 
     # --- Tab 4: AI ---
@@ -148,17 +152,13 @@ def render_main_app():
         
         if uploaded and st.button("🚀 开始混合推理"):
             status = st.status("正在分析...", expanded=True)
-            
             with open("temp.mp3", "wb") as f:
                 f.write(uploaded.getbuffer())
-            
             # 1. Cloud
             status.write("☁️ 云端 CNN 识别武器型号...")
             cloud_raw_res = predict_cloud("temp.mp3")
-            
             cloud_weapon_name = "未知"
             cloud_conf = 0.0
-            
             try:
                 if isinstance(cloud_raw_res, dict) and 'label' in cloud_raw_res:
                     cloud_weapon_name = cloud_raw_res['label']
@@ -175,15 +175,26 @@ def render_main_app():
             status.write("💻 本地 RF 测算距离方位...")
             local_models = load_local_models()
             local_dist, local_dir = "N/A", "N/A"
-            
             if local_models:
                 feats = extract_features("temp.mp3")
                 if feats is not None:
                     local_dist = local_models['models']['distance'].predict(feats)[0]
                     local_dir = local_models['models']['direction'].predict(feats)[0]
-            
+
             status.update(label="分析完成", state="complete", expanded=False)
-            
+
+            # 日志记录（AI推理）
+            log_action(
+                db,
+                user['student_id'],
+                "AI_INFERENCE",
+                {
+                    "cloud": {"weapon": cloud_weapon_name, "conf": float(cloud_conf)},
+                    "local": {"dist": local_dist, "dir": local_dir},
+                    "audio_file": uploaded.name
+                }
+            )
+
             # 3. Result
             c1, c2, c3 = st.columns(3)
             with c1:
