@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import tempfile
 from datetime import datetime
 from utils.database import get_db
 from logic.ai_core import load_local_models, extract_features, predict_cloud
@@ -152,55 +153,64 @@ def render_main_app():
         
         if uploaded and st.button("🚀 开始混合推理"):
             status = st.status("正在分析...", expanded=True)
-            with open("temp.mp3", "wb") as f:
-                f.write(uploaded.getbuffer())
-            # 1. Cloud
-            status.write("☁️ 云端 CNN 识别武器型号...")
-            cloud_raw_res = predict_cloud("temp.mp3")
-            cloud_weapon_name = "未知"
-            cloud_conf = 0.0
+            tmp_file_path = None
             try:
-                if isinstance(cloud_raw_res, dict) and 'label' in cloud_raw_res:
-                    cloud_weapon_name = cloud_raw_res['label']
-                    if 'confidences' in cloud_raw_res:
-                        cloud_conf = cloud_raw_res['confidences'][0]['confidence']
-                elif isinstance(cloud_raw_res, dict):
-                    cloud_weapon_name = max(cloud_raw_res, key=cloud_raw_res.get)
-                    cloud_conf = cloud_raw_res[cloud_weapon_name]
-                elif isinstance(cloud_raw_res, str):
-                    cloud_weapon_name = cloud_raw_res
-            except: pass
+                # 创建临时文件，避免命名冲突
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
+                    tmp_file.write(uploaded.getbuffer())
+                    tmp_file_path = tmp_file.name
 
-            # 2. Local
-            status.write("💻 本地 RF 测算距离方位...")
-            local_models = load_local_models()
-            local_dist, local_dir = "N/A", "N/A"
-            if local_models:
-                feats = extract_features("temp.mp3")
-                if feats is not None:
-                    local_dist = local_models['models']['distance'].predict(feats)[0]
-                    local_dir = local_models['models']['direction'].predict(feats)[0]
+                # 1. Cloud
+                status.write("☁️ 云端 CNN 识别武器型号...")
+                cloud_raw_res = predict_cloud(tmp_file_path)
+                cloud_weapon_name = "未知"
+                cloud_conf = 0.0
+                try:
+                    if isinstance(cloud_raw_res, dict) and 'label' in cloud_raw_res:
+                        cloud_weapon_name = cloud_raw_res['label']
+                        if 'confidences' in cloud_raw_res:
+                            cloud_conf = cloud_raw_res['confidences'][0]['confidence']
+                    elif isinstance(cloud_raw_res, dict):
+                        cloud_weapon_name = max(cloud_raw_res, key=cloud_raw_res.get)
+                        cloud_conf = cloud_raw_res[cloud_weapon_name]
+                    elif isinstance(cloud_raw_res, str):
+                        cloud_weapon_name = cloud_raw_res
+                except: pass
 
-            status.update(label="分析完成", state="complete", expanded=False)
+                # 2. Local
+                status.write("💻 本地 RF 测算距离方位...")
+                local_models = load_local_models()
+                local_dist, local_dir = "N/A", "N/A"
+                if local_models:
+                    feats = extract_features(tmp_file_path)
+                    if feats is not None:
+                        local_dist = local_models['models']['distance'].predict(feats)[0]
+                        local_dir = local_models['models']['direction'].predict(feats)[0]
 
-            # 日志记录（AI推理）
-            log_action(
-                db,
-                user['student_id'],
-                "AI_INFERENCE",
-                {
-                    "cloud": {"weapon": cloud_weapon_name, "conf": float(cloud_conf)},
-                    "local": {"dist": local_dist, "dir": local_dir},
-                    "audio_file": uploaded.name
-                }
-            )
+                status.update(label="分析完成", state="complete", expanded=False)
 
-            # 3. Result
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.metric("武器型号", cloud_weapon_name)
-                st.progress(float(cloud_conf), text=f"置信度: {float(cloud_conf):.1%}")
-                img_path = f"images/{cloud_weapon_name}.png"
-                if os.path.exists(img_path): st.image(img_path, width=120)
-            c2.metric("射击距离", local_dist)
-            c3.metric("射击方位", local_dir)
+                # 日志记录（AI推理）
+                log_action(
+                    db,
+                    user['student_id'],
+                    "AI_INFERENCE",
+                    {
+                        "cloud": {"weapon": cloud_weapon_name, "conf": float(cloud_conf)},
+                        "local": {"dist": local_dist, "dir": local_dir},
+                        "audio_file": uploaded.name
+                    }
+                )
+
+                # 3. Result
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.metric("武器型号", cloud_weapon_name)
+                    st.progress(float(cloud_conf), text=f"置信度: {float(cloud_conf):.1%}")
+                    img_path = f"images/{cloud_weapon_name}.png"
+                    if os.path.exists(img_path): st.image(img_path, width=120)
+                c2.metric("射击距离", local_dist)
+                c3.metric("射击方位", local_dir)
+            finally:
+                # 用完后删除临时文件
+                if tmp_file_path and os.path.exists(tmp_file_path):
+                    os.remove(tmp_file_path)
