@@ -211,3 +211,7 @@ __marimo__/
 data/raw/
 data/audio/
 data/processed/*.csvtemp_upload.mp3
+
+# pytest-html 测试报告目录
+reports/
+.pytest_cache/
