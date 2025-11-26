@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import WeaponImage from "@/components/WeaponImage";
 
 interface Weapon {
   name: string;
@@ -161,16 +162,21 @@ export default function CatalogPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredWeapons.map((w) => (
             <Card key={w.name} className="glass-card overflow-hidden group hover:border-emerald-500/30 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/10">
-              <div className="aspect-video bg-black/40 flex items-center justify-center p-4 relative">
-                {/* 图片路径：自动去 public/images/ 找 */}
-                <img 
-                  src={`/images/${w.name}.png`} 
-                  onError={(e) => e.currentTarget.src = "https://img.icons8.com/ios-filled/100/666666/gun.png"}
-                  alt={w.name} 
-                  className="h-32 object-contain drop-shadow-2xl group-hover:scale-105 transition-transform duration-300"
+              {/* 图片展示区 */}
+              <div className="aspect-video bg-zinc-950/50 flex items-center justify-center p-6 relative group-hover:bg-zinc-900/50 transition-colors border-b border-zinc-800/50">
+                {/* 调用智能组件 */}
+                <WeaponImage 
+                  name={w.name} 
+                  alt={w.full_name} 
+                  className="w-full h-full z-10" // 确保图片填满容器
                 />
-                <div className="absolute top-3 right-3">
-                   <span className="text-xs font-bold px-2 py-1 rounded bg-white/5 text-zinc-300 border border-white/10 backdrop-blur-md">
+
+                {/* 背景装饰光晕 (让图片看起来更高级) */}
+                <div className="absolute inset-0 bg-gradient-to-t from-zinc-900/80 to-transparent z-0 pointer-events-none"></div>
+
+                {/* 右上角标签 (保持不变) */}
+                <div className="absolute top-3 right-3 z-20">
+                   <span className="text-[10px] font-bold px-2 py-1 rounded bg-zinc-900/80 text-zinc-400 border border-zinc-700 backdrop-blur-sm uppercase tracking-wider">
                      {w.type}
                    </span>
                 </div>

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress"; // 需要安装 progress 组件
 import { Shield, Activity, Package, Sword, UploadCloud, Mic, Target, Zap, Settings } from "lucide-react";
 import { toast } from "sonner";
+import WeaponImage from "@/components/WeaponImage";
 
 export default function AnalyzePage() {
   const [loading, setLoading] = useState(false);
@@ -128,17 +129,26 @@ export default function AnalyzePage() {
               
               {/* 1. 核心结果：武器型号 */}
               <Card className="glass-card border-l-4 border-l-emerald-500">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
+                <CardContent className="p-6 relative overflow-hidden">
+                  {/* 背景大图 (半透明装饰) */}
+                  <div className="absolute right-[-20px] top-[-20px] w-48 h-48 opacity-20 pointer-events-none rotate-12">
+                      <WeaponImage name={result.cloud.label} alt="bg" />
+                  </div>
+
+                  <div className="flex items-start justify-between relative z-10">
                     <div>
                       <p className="text-sm text-zinc-500 font-mono mb-1">IDENTIFIED WEAPON</p>
-                      <h2 className="text-4xl font-black text-white tracking-tight uppercase drop-shadow-lg">
+                      <h2 className="text-4xl font-black text-white tracking-tight uppercase">
                         {result.cloud.label}
                       </h2>
+                      {/* 在这里也显示一张清晰的小图 */}
+                      <div className="mt-4 w-32 h-20 bg-zinc-950/50 rounded-lg border border-zinc-800 p-2">
+                          <WeaponImage name={result.cloud.label} alt="result" />
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className="text-sm text-zinc-500 font-mono mb-1">CONFIDENCE</p>
-                      <div className="text-2xl font-bold text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]">
+                      <div className="text-2xl font-bold text-emerald-400">
                         {(result.cloud.confidence * 100).toFixed(1)}%
                       </div>
                     </div>

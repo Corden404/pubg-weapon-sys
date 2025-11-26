@@ -14,14 +14,33 @@ HF_SPACE_ID = "Corden/pubg-sound-api" # 你的 Space 地址
 
 @st.cache_resource
 def load_local_models():
-    """加载本地 RF 模型"""
-    model_path = "data/processed/weapon_classifier.pkl"
-    if os.path.exists(model_path):
-        try:
-            return joblib.load(model_path)
-        except:
+    """加载本地 RF 模型 (使用绝对路径修复版)"""
+    try:
+        # 1. 获取当前文件 (logic/ai_core.py) 的绝对路径
+        current_file_path = os.path.abspath(__file__)
+        
+        # 2. 获取项目根目录 (logic 的上一级)
+        # 第一次 dirname 得到 logic/ 目录
+        # 第二次 dirname 得到 项目根目录
+        project_root = os.path.dirname(os.path.dirname(current_file_path))
+        
+        # 3. 拼接出模型的绝对路径
+        model_path = os.path.join(project_root, "data", "processed", "weapon_classifier.pkl")
+        
+        # 调试打印，让你确认路径对不对
+        print(f"🔍 正在尝试加载模型，路径: {model_path}")
+
+        if os.path.exists(model_path):
+            model = joblib.load(model_path)
+            print("✅ 本地模型加载成功！")
+            return model
+        else:
+            print("❌ 错误：模型文件不存在于该路径。")
             return None
-    return None
+
+    except Exception as e:
+        print(f"❌ 模型加载发生异常: {e}")
+        return None
 
 def extract_features(audio_file):
     """提取音频特征 (与训练时一致)"""
