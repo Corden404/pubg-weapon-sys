@@ -88,6 +88,17 @@ class LoginRequest(BaseModel):
     student_id: str
     password: str
 
+
+class RegisterRequest(BaseModel):
+    """注册请求
+
+    说明：这里保持最小字段集，密码确认（confirm password）放在前端做。
+    后端只负责：校验是否可注册、写库、返回结果。
+    """
+
+    student_id: str
+    password: str
+
 # --- 2. 登录接口 ---
 @app.post("/api/login")
 def login(req: LoginRequest):
@@ -117,6 +128,46 @@ def login(req: LoginRequest):
     # 登录失败：仍然写日志，但不要写入明文密码。
     log_action(db, req.student_id, "LOGIN_FAILED", {"reason": "账号或密码错误"}, level="WARN")
     raise HTTPException(status_code=401, detail="账号或密码错误")
+
+
+@app.post("/api/register")
+def register(req: RegisterRequest):
+    """注册新用户（Web 前端使用）。
+
+    约束：
+    - student_id 必须唯一
+    - 管理员账号为系统保留（ADMIN_STUDENT_ID），不允许普通注册占用
+    """
+
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    student_id = (req.student_id or "").strip()
+    if not student_id:
+        raise HTTPException(status_code=400, detail="学号不能为空")
+
+    admin_id, _ = _get_admin_credentials()
+    if student_id == admin_id:
+        raise HTTPException(status_code=400, detail="该学号为系统保留管理员账号，不能注册")
+
+    # 是否已存在
+    existing = db.users.find_one({"student_id": student_id})
+    if existing is not None:
+        log_action(db, student_id, "REGISTER_FAILED", {"reason": "学号已存在"}, level="WARN")
+        raise HTTPException(status_code=409, detail="该学号已存在")
+
+    db.users.insert_one(
+        {
+            "student_id": student_id,
+            "password": make_hash(req.password),
+            "role": "user",
+            "inventory": [],
+            "created_at": datetime.now(),
+        }
+    )
+    log_action(db, student_id, "REGISTER", {"role": "user"})
+    return {"status": "success", "message": "注册成功"}
 
 # --- 3. 获取用户背包接口 ---
 @app.get("/api/inventory/{student_id}")
