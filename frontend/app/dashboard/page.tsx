@@ -23,6 +23,8 @@ export default function Dashboard() {
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
 
   const fetchInventory = (studentId: string) => {
+    // 后端会同时返回 inventory 列表与 stats 汇总；
+    // 因为 stats 由后端计算，这里删除/新增后都选择重新拉取一次保持一致。
     fetch(`/api/inventory/${studentId}`)
       .then(res => res.json())
       .then(data => {
@@ -50,6 +52,8 @@ export default function Dashboard() {
     if (!user || user === "Unknown") return;
     setDeletingIndex(index);
     try {
+      // 删除按“当前展示顺序的 index”定位。
+      // 这是有意的设计：背包条目没有稳定的唯一 id 时，用 index 最简单直观。
       const res = await fetch(`/api/inventory/${user}/${index}`, { method: "DELETE" });
       if (!res.ok) return;
       fetchInventory(user);

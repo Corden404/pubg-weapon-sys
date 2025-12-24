@@ -1,4 +1,4 @@
-"use client"; // 👈 必须加这行，因为我们要用 useState (交互)
+"use client"; // Client Component：页面里用到了 hooks。
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -21,10 +21,8 @@ export default function LoginPage() {
     setError("");
 
     try {
-      // 1. 调用 FastAPI 后端
-      // 注意：Codespaces 的后端地址通常是 localhost:8000
-      // 如果你在 Codespaces 浏览器预览，可能需要用相对路径或配置代理，
-      // 但为了简单，我们先假设本地联调。
+      // 通过 Next.js 的 /api 反向代理访问 FastAPI。
+      // 具体代理规则在 next.config.ts 的 rewrites 里配置。
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -37,8 +35,8 @@ export default function LoginPage() {
         throw new Error(data.detail || "登录失败");
       }
 
-      // 2. 登录成功
-      // 1. 保存学号到 localStorage (简单起见)
+      // 登录态这里用 localStorage 做“演示级”的持久化。
+      // 这不是安全方案：权限/鉴权以服务端校验为准（尤其是管理员接口）。
       localStorage.setItem("student_id", data.user.student_id);
       if (data?.user?.role) {
         localStorage.setItem("role", data.user.role);

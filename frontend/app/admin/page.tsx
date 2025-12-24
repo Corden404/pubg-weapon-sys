@@ -77,6 +77,8 @@ export default function AdminPage() {
       return;
     }
 
+    // 这里的 role 判断主要是“用户体验层”的拦截（避免普通用户看到管理页）。
+    // 真正的权限控制在后端：管理员接口会校验 X-Student-Id 对应用户的 role。
     if (role !== "admin") {
       router.push("/dashboard");
       return;
@@ -100,6 +102,7 @@ export default function AdminPage() {
     setUsersLoading(true);
     fetch("/api/admin/users/weapons", {
       headers: {
+        // 该 header 用于后端鉴权 & 审计日志；并不等价于安全登录态。
         "X-Student-Id": studentId,
       }
     })

@@ -3,9 +3,9 @@
 import { useEffect, useRef } from "react";
 
 interface WeaponImageProps {
-  name: string;      // 武器名称 (数据库里的 name)
-  alt: string;       // 图片描述
-  className?: string; // 允许外部传入样式
+  name: string; // 武器唯一名（与 public/images 下的文件名一致）
+  alt: string;
+  className?: string;
 }
 
 export default function WeaponImage({ name, alt, className }: WeaponImageProps) {
@@ -33,9 +33,9 @@ export default function WeaponImage({ name, alt, className }: WeaponImageProps) 
   return (
     <div className={`relative flex items-center justify-center overflow-hidden ${className}`}>
       {/* 
-        使用标准 img 标签而不是 next/image 的 fill 模式，
-        因为在这个场景下我们需要频繁处理 onError，原生 img 更可控。
-        如果你想用 next/image，需要配置 width/height。
+        这里用原生 img：
+        - onError 回退链（webp -> png -> default）更好控制
+        - 静态图片不需要 next/image 的优化收益
       */}
       <img
         key={name}

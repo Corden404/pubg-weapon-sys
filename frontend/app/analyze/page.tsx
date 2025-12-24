@@ -23,7 +23,8 @@ export default function AnalyzePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalyzeResult | null>(null);
 
-  // 处理文件上传
+  // 上传音频后直接请求后端分析接口。
+  // 这里把 student_id 作为 header 传给后端，用于审计日志归因（logs 集合）。
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -34,9 +35,12 @@ export default function AnalyzePage() {
     const formData = new FormData();
     formData.append("file", file);
 
+    const studentId = localStorage.getItem("student_id");
+
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
+        headers: studentId ? { "X-Student-Id": studentId } : undefined,
         body: formData,
       });
       const data = await res.json();

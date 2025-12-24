@@ -1,9 +1,18 @@
+"""日志与审计
+
+这里分两层：
+1) 控制台日志：方便开发时看运行情况（logging logger）。
+2) 审计日志：写入 MongoDB 的 logs 集合，记录“谁在什么时候做了什么”。
+
+注意：这个模块既会被 Streamlit UI 调用，也会被 FastAPI 后端调用。
+所以不要在这里做 UI 相关依赖（比如 st.*），保持它纯粹。
+"""
+
 import logging
-import streamlit as st
 from datetime import datetime
 
 # --- 1. 系统级日志配置 (控制台输出) ---
-# 防止重复配置
+# 防止重复配置：在 Streamlit/FastAPI 的热重载环境下，模块可能被重复 import。
 logger = logging.getLogger("PUBG_System")
 if not logger.handlers:
     logger.setLevel(logging.INFO)
@@ -28,10 +37,14 @@ def log_action(db, user_id, action_type, details=None, level="INFO"):
     :param details: 详细信息 (字典或字符串)
     :param level: 日志级别 (INFO, WARN, ERROR)
     """
+    # 这里不 raise：
+    # - 日志写入失败不应该让主流程崩掉（比如用户正常下单/分析不该因为日志挂了就失败）
+    # - 但会在控制台输出 error，便于排查
     if db is None:
         logger.error("无法写入审计日志：数据库连接为空")
         return
 
+    # 建议：后续可以在 logs 上建索引（timestamp/user_id/action），便于检索。
     log_entry = {
         "timestamp": datetime.now(),
         "user_id": user_id,

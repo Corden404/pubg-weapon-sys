@@ -6,8 +6,8 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge"; // 如果没安装 badge 可能会报错，可以先删掉 Badge 组件或者安装它
-import { toast } from "sonner"; // 漂亮的提示
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import { Search, Plus, Shield, Package, Activity, LogOut, Sword, Crosshair, Settings } from "lucide-react";
 import {
   Dialog,
@@ -132,6 +132,7 @@ export default function CatalogPage() {
     if (sortKey === "reload_time") return Number(w.stats?.reload_time ?? 0);
     if (sortKey === "mag_size") return Number(w.stats?.mag_size ?? 0);
     // rpm
+    // 注意：DB 里 fire_rate 的含义是「每发间隔（秒）」而不是 RPM。
     const fireInterval = Number(w.stats?.fire_rate ?? 0);
     if (!fireInterval || fireInterval <= 0) return 0;
     return 60 / fireInterval;
