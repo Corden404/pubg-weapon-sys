@@ -3,7 +3,12 @@ import joblib
 import numpy as np
 import librosa
 import pandas as pd
-import streamlit as st
+try:
+    import streamlit as st
+    from streamlit.runtime import runtime as st_runtime
+except Exception:  # pragma: no cover
+    st = None
+    st_runtime = None
 from gradio_client import Client, handle_file
 
 # 配置
@@ -12,7 +17,22 @@ DURATION = 2.0
 N_MFCC = 13
 HF_SPACE_ID = "Corden/pubg-sound-api" # 你的 Space 地址
 
-@st.cache_resource
+def _cache_resource(func):
+    """Use Streamlit cache only when running under Streamlit runtime.
+
+    This keeps the function usable from FastAPI and pytest.
+    """
+
+    try:
+        if st is not None and st_runtime is not None and st_runtime.exists():
+            return st.cache_resource(func)
+    except Exception:
+        # Fallback to no-op caching outside Streamlit.
+        pass
+    return func
+
+
+@_cache_resource
 def load_local_models():
     """加载本地 RF 模型 (使用绝对路径修复版)"""
     try:

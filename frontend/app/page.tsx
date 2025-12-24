@@ -40,12 +40,19 @@ export default function LoginPage() {
       // 2. 登录成功
       // 1. 保存学号到 localStorage (简单起见)
       localStorage.setItem("student_id", data.user.student_id);
+      if (data?.user?.role) {
+        localStorage.setItem("role", data.user.role);
+      }
+      if (typeof data?.user?.is_admin === "boolean") {
+        localStorage.setItem("is_admin", String(data.user.is_admin));
+      }
 
       // 2. 跳转
       router.push("/dashboard");
 
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+      else setError("登录失败");
     } finally {
       setLoading(false);
     }

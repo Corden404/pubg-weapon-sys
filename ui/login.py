@@ -2,8 +2,13 @@ import streamlit as st
 from datetime import datetime
 from utils.database import get_db, make_hash, check_hashes
 from utils.logger import log_action, get_logger  # <--- 新增导入
+import os
 
 logger = get_logger()
+
+
+def _get_reserved_admin_id() -> str:
+    return os.getenv("ADMIN_STUDENT_ID", "admin")
 
 def render_login():
     st.markdown("<h1 style='text-align: center;'>🔐 PUBG 综合实训系统</h1>", unsafe_allow_html=True)
@@ -42,6 +47,9 @@ def render_login():
             confirm_pass = st.text_input("确认密码", type='password')
             
             if st.button("立即注册", use_container_width=True):
+                if new_user.strip() == _get_reserved_admin_id():
+                    st.error("该学号为系统保留管理员账号，不能注册")
+                    return
                 if new_pass != confirm_pass:
                     st.error("两次密码输入不一致")
                 elif db.users.find_one({"student_id": new_user}):
@@ -52,6 +60,7 @@ def render_login():
                     db.users.insert_one({
                         "student_id": new_user,
                         "password": make_hash(new_pass),
+                        "role": "user",
                         "inventory": [],
                         "created_at": datetime.now()
                     })

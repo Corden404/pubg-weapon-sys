@@ -1,6 +1,6 @@
 import sys
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
@@ -12,9 +12,44 @@ from logic.ai_core import predict_cloud, extract_features, load_local_models
 # --- 路径黑魔法：确保能导入 utils ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils.database import get_db, check_hashes
+from utils.database import get_db, check_hashes, make_hash
 
 app = FastAPI(title="PUBG Weapon System API")
+
+
+def _get_admin_credentials() -> tuple[str, str]:
+    admin_id = os.getenv("ADMIN_STUDENT_ID", "admin")
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+    return admin_id, admin_password
+
+
+@app.on_event("startup")
+def ensure_admin_user() -> None:
+    """Ensure an admin account exists.
+
+    This project uses a simplified auth model (no JWT). For usability,
+    we bootstrap an admin user on startup based on environment variables.
+    """
+    db = get_db()
+    if db is None:
+        return
+
+    admin_id, admin_password = _get_admin_credentials()
+    existing = db.users.find_one({"student_id": admin_id})
+    if existing is None:
+        db.users.insert_one(
+            {
+                "student_id": admin_id,
+                "password": make_hash(admin_password),
+                "role": "admin",
+                "inventory": [],
+                "created_at": datetime.now(),
+            }
+        )
+    else:
+        # Backfill role if the user existed before this feature.
+        if existing.get("role") != "admin":
+            db.users.update_one({"student_id": admin_id}, {"$set": {"role": "admin"}})
 
 # --- 允许跨域 (让前端能访问后端) ---
 app.add_middleware(
@@ -43,11 +78,14 @@ def login(req: LoginRequest):
     # 校验密码
     if user and check_hashes(req.password, user['password']):
         # 登录成功，返回用户信息 (实际项目中这里会发 JWT Token)
+        role = user.get("role", "user")
         return {
             "status": "success", 
             "user": {
                 "student_id": user['student_id'],
-                "inventory_count": len(user.get('inventory', []))
+                "inventory_count": len(user.get('inventory', [])),
+                "role": role,
+                "is_admin": role == "admin",
             }
         }
     
@@ -77,6 +115,31 @@ def get_inventory(student_id: str):
         "inventory": inventory,
         "stats": stats
     }
+
+
+@app.delete("/api/inventory/{student_id}/{index}")
+def delete_inventory_item(student_id: str, index: int):
+    """Delete one inventory entry by index (0-based).
+
+    Inventory items are stored as an array. We delete by index to avoid
+    datetime matching/precision issues.
+    """
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    user = db.users.find_one({"student_id": student_id}, {"_id": 0, "inventory": 1})
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    inventory = user.get("inventory", [])
+    if index < 0 or index >= len(inventory):
+        raise HTTPException(status_code=400, detail="index 越界")
+
+    # Unset the array element then pull nulls to compact.
+    db.users.update_one({"student_id": student_id}, {"$unset": {f"inventory.{index}": 1}})
+    db.users.update_one({"student_id": student_id}, {"$pull": {"inventory": None}})
+    return {"status": "success", "message": "删除成功"}
 
 @app.get("/")
 def root():
@@ -117,7 +180,8 @@ def add_to_inventory(req: AddItemRequest):
     
     raise HTTPException(status_code=400, detail="添加失败")
 
-    # --- 6. AI 分析接口 ---
+
+# --- 6. AI 分析接口 ---
 @app.post("/api/analyze")
 async def analyze_audio(file: UploadFile = File(...)):
     # 1. 保存上传的文件到临时目录
@@ -189,7 +253,56 @@ async def analyze_audio(file: UploadFile = File(...)):
         # 4. 清理临时文件 (好习惯)
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-    # ... (保留之前的代码)
+
+
+def _require_admin(x_student_id: str = Header(None, alias="X-Student-Id")) -> str:
+    if not x_student_id:
+        raise HTTPException(status_code=401, detail="缺少管理员凭据")
+
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+    user = db.users.find_one({"student_id": x_student_id})
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="无管理员权限")
+    return x_student_id
+
+
+@app.get("/api/admin/users/weapons")
+def admin_get_all_users_weapon_details(x_student_id: str = Header(None, alias="X-Student-Id")):
+    """Admin-only: list all users and their inventory enriched with weapon details."""
+    # We validate admin using the same header.
+    admin_id = _require_admin(x_student_id)
+    db = get_db()
+
+    users = list(db.users.find({}, {"_id": 0, "password": 0}))
+    weapons = list(db.game_weapons.find({}, {"_id": 0}))
+    weapon_by_name = {w.get("name"): w for w in weapons if w.get("name")}
+
+    enriched = []
+    for u in users:
+        inv = u.get("inventory", []) or []
+        inv_items = []
+        for item in inv:
+            wname = item.get("weapon_name")
+            inv_items.append(
+                {
+                    **item,
+                    "weapon": weapon_by_name.get(wname),
+                }
+            )
+
+        enriched.append(
+            {
+                "student_id": u.get("student_id"),
+                "role": u.get("role", "user"),
+                "inventory": inv_items,
+                "inventory_count": len(inv_items),
+            }
+        )
+
+    return {"status": "success", "admin": admin_id, "users": enriched}
 
 # --- 7. 更新武器数据 (管理员) ---
 class UpdateWeaponRequest(BaseModel):

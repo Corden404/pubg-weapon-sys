@@ -4,14 +4,24 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress"; // 需要安装 progress 组件
 import { Shield, Activity, Package, Sword, UploadCloud, Mic, Target, Zap, Settings } from "lucide-react";
 import { toast } from "sonner";
 import WeaponImage from "@/components/WeaponImage";
 
+type AnalyzeResult = {
+  cloud: {
+    label: string;
+    confidence: number;
+  };
+  local: {
+    distance: number | string;
+    direction: number | string;
+  };
+};
+
 export default function AnalyzePage() {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<AnalyzeResult | null>(null);
 
   // 处理文件上传
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -37,7 +47,7 @@ export default function AnalyzePage() {
       } else {
         toast.error("分析失败");
       }
-    } catch (err) {
+    } catch {
       toast.error("网络错误");
     } finally {
       setLoading(false);

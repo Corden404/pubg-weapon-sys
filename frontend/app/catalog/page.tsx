@@ -27,6 +27,14 @@ interface Weapon {
   type: string;
   damage: number;
   image_url?: string;
+  ammo_type?: string;
+  stats?: {
+    headshot_rate?: number;
+    fire_rate?: number; // seconds per shot in DB seed
+    range?: number;
+    mag_size?: number;
+    reload_time?: number;
+  };
 }
 
 export default function CatalogPage() {
@@ -35,6 +43,19 @@ export default function CatalogPage() {
   const [weapons, setWeapons] = useState<Weapon[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState<{ [key: string]: boolean }>({}); // 控制每个按钮的加载状态
+
+  const [sortKey, setSortKey] = useState<
+    "damage" | "rpm" | "range" | "reload_time" | "mag_size"
+  >("damage");
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
+
+  const parseSortKey = (value: string) => {
+    const allowed = ["damage", "rpm", "range", "reload_time", "mag_size"] as const;
+    if ((allowed as readonly string[]).includes(value)) {
+      return value as (typeof allowed)[number];
+    }
+    return "damage";
+  };
   
   // 弹窗状态
   const [selectedWeapon, setSelectedWeapon] = useState<Weapon | null>(null);
@@ -105,6 +126,36 @@ export default function CatalogPage() {
     w.full_name?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const getSortValue = (w: Weapon) => {
+    if (sortKey === "damage") return Number.isFinite(w.damage) ? w.damage : 0;
+    if (sortKey === "range") return Number(w.stats?.range ?? 0);
+    if (sortKey === "reload_time") return Number(w.stats?.reload_time ?? 0);
+    if (sortKey === "mag_size") return Number(w.stats?.mag_size ?? 0);
+    // rpm
+    const fireInterval = Number(w.stats?.fire_rate ?? 0);
+    if (!fireInterval || fireInterval <= 0) return 0;
+    return 60 / fireInterval;
+  };
+
+  const formatNumber = (value: unknown, digits = 0) => {
+    const n = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(n)) return "—";
+    return n.toFixed(digits);
+  };
+
+  const getRpm = (w: Weapon) => {
+    const fireInterval = Number(w.stats?.fire_rate ?? 0);
+    if (!fireInterval || fireInterval <= 0) return null;
+    return 60 / fireInterval;
+  };
+
+  const sortedWeapons = [...filteredWeapons].sort((a, b) => {
+    const av = getSortValue(a);
+    const bv = getSortValue(b);
+    if (sortOrder === "asc") return av - bv;
+    return bv - av;
+  });
+
   return (
     <div className="flex min-h-screen font-sans">
       
@@ -146,21 +197,48 @@ export default function CatalogPage() {
             <p className="text-zinc-400">浏览并申请战术装备</p>
           </div>
           
-          {/* 搜索框 */}
-          <div className="relative w-72">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
-            <Input 
-              placeholder="搜索型号 (AKM, M4...)" 
-              className="pl-9 bg-black/20 border-white/10 focus-visible:ring-emerald-500/50 text-zinc-200 placeholder:text-zinc-600"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
+          <div className="flex items-end gap-3">
+            {/* 排序 */}
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-zinc-500">排序</span>
+              <div className="flex gap-2">
+                <select
+                  value={sortKey}
+                  onChange={(e) => setSortKey(parseSortKey(e.target.value))}
+                  className="h-10 rounded-md bg-black/20 border border-white/10 px-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                >
+                  <option value="damage">伤害</option>
+                  <option value="rpm">射速 (RPM)</option>
+                  <option value="range">射程</option>
+                  <option value="mag_size">弹匣</option>
+                  <option value="reload_time">装填时间</option>
+                </select>
+                <Button
+                  variant="outline"
+                  className="border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300"
+                  onClick={() => setSortOrder((p) => (p === "desc" ? "asc" : "desc"))}
+                >
+                  {sortOrder === "desc" ? "降序" : "升序"}
+                </Button>
+              </div>
+            </div>
+
+            {/* 搜索框 */}
+            <div className="relative w-72">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+              <Input 
+                placeholder="搜索型号 (AKM, M4...)" 
+                className="pl-9 bg-black/20 border-white/10 focus-visible:ring-emerald-500/50 text-zinc-200 placeholder:text-zinc-600"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
           </div>
         </header>
 
         {/* 武器网格 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredWeapons.map((w) => (
+          {sortedWeapons.map((w) => (
             <Card key={w.name} className="glass-card overflow-hidden group hover:border-emerald-500/30 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/10">
               {/* 图片展示区 */}
               <div className="aspect-video bg-zinc-950/50 flex items-center justify-center p-6 relative group-hover:bg-zinc-900/50 transition-colors border-b border-zinc-800/50">
@@ -186,7 +264,51 @@ export default function CatalogPage() {
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="font-bold text-lg text-zinc-100">{w.full_name || w.name}</h3>
-                    <p className="text-sm text-zinc-500">Base Damage: <span className="text-emerald-500">{w.damage}</span></p>
+                    <p className="text-xs text-zinc-500 mt-0.5">型号: <span className="text-zinc-300 font-mono">{w.name}</span></p>
+
+                    {/* 属性面板 */}
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-zinc-500">伤害</span>
+                        <span className="text-emerald-500 font-mono font-bold">{formatNumber(w.damage, 0)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-zinc-500">弹药</span>
+                        <span className="text-zinc-200 font-mono">{w.ammo_type || "—"}</span>
+                      </div>
+
+                      <div className="flex justify-between gap-2">
+                        <span className="text-zinc-500">射速(RPM)</span>
+                        <span className="text-zinc-200 font-mono">
+                          {(() => {
+                            const rpm = getRpm(w);
+                            return rpm ? Math.round(rpm).toString() : "—";
+                          })()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-zinc-500">射程</span>
+                        <span className="text-zinc-200 font-mono">{formatNumber(w.stats?.range, 0)}</span>
+                      </div>
+
+                      <div className="flex justify-between gap-2">
+                        <span className="text-zinc-500">弹匣</span>
+                        <span className="text-zinc-200 font-mono">{formatNumber(w.stats?.mag_size, 0)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-zinc-500">装填(s)</span>
+                        <span className="text-zinc-200 font-mono">{formatNumber(w.stats?.reload_time, 1)}</span>
+                      </div>
+
+                      <div className="flex justify-between gap-2">
+                        <span className="text-zinc-500">爆头倍率</span>
+                        <span className="text-zinc-200 font-mono">{formatNumber(w.stats?.headshot_rate, 1)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-zinc-500">类型</span>
+                        <span className="text-zinc-200">{w.type || "—"}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 

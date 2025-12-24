@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"; // 路由跳转
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Package, Shield, Activity, LogOut, Sword, Zap, Settings } from "lucide-react";
+import { Package, Shield, Activity, LogOut, Sword, Zap, Settings, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 // 定义数据类型
@@ -20,6 +20,18 @@ export default function Dashboard() {
   const [user, setUser] = useState("Unknown");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [stats, setStats] = useState({ total_ammo: 0, total_weapons: 0, recent_item: "None" });
+  const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
+
+  const fetchInventory = (studentId: string) => {
+    fetch(`/api/inventory/${studentId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          setItems(data.inventory);
+          setStats(data.stats);
+        }
+      });
+  };
 
   useEffect(() => {
     // 1. 从 localStorage 获取登录态 (简化版，实际项目用 Context)
@@ -31,18 +43,25 @@ export default function Dashboard() {
     setUser(storedUser);
 
     // 2. 获取数据
-    fetch(`/api/inventory/${storedUser}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "success") {
-          setItems(data.inventory);
-          setStats(data.stats);
-        }
-      });
+    fetchInventory(storedUser);
   }, [router]);
+
+  const handleDeleteItem = async (index: number) => {
+    if (!user || user === "Unknown") return;
+    setDeletingIndex(index);
+    try {
+      const res = await fetch(`/api/inventory/${user}/${index}`, { method: "DELETE" });
+      if (!res.ok) return;
+      fetchInventory(user);
+    } finally {
+      setDeletingIndex(null);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("student_id");
+    localStorage.removeItem("role");
+    localStorage.removeItem("is_admin");
     router.push("/");
   };
 
@@ -204,6 +223,17 @@ export default function Dashboard() {
                       <p className="text-xs text-zinc-500">库存</p>
                     </div>
                     <div className="ml-auto font-medium text-emerald-500">+{item.ammo_count}</div>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-2 h-8 w-8 text-zinc-500 hover:text-red-400 hover:bg-white/5"
+                      onClick={() => handleDeleteItem(i)}
+                      disabled={deletingIndex === i}
+                      aria-label={`删除 ${item.weapon_name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 ))}
               </div>

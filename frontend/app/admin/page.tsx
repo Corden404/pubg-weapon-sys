@@ -33,10 +33,35 @@ interface Weapon {
   damage: number;
 }
 
+interface InventoryItem {
+  weapon_name: string;
+  ammo_count: number;
+  added_at?: string;
+  weapon?: Weapon & {
+    ammo_type?: string;
+    stats?: {
+      fire_rate?: number;
+      range?: number;
+      mag_size?: number;
+      reload_time?: number;
+    };
+  };
+}
+
+interface UserInventory {
+  student_id: string;
+  role: string;
+  inventory_count: number;
+  inventory: InventoryItem[];
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [weapons, setWeapons] = useState<Weapon[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [users, setUsers] = useState<UserInventory[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
   
   // 编辑状态
   const [editingWeapon, setEditingWeapon] = useState<Weapon | null>(null);
@@ -45,16 +70,21 @@ export default function AdminPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    // 1. 简单的权限模拟
-    // 在真实项目中，这里应该检查后端返回的 role 字段
     const user = localStorage.getItem("student_id");
+    const role = localStorage.getItem("role");
     if (!user) {
       router.push("/");
+      return;
+    }
+
+    if (role !== "admin") {
+      router.push("/dashboard");
       return;
     }
     
     // 2. 获取数据
     fetchWeapons();
+    fetchUsersWeapons(user);
   }, [router]);
 
   const fetchWeapons = () => {
@@ -64,6 +94,22 @@ export default function AdminPage() {
         setWeapons(data.weapons);
         setLoading(false);
       });
+  };
+
+  const fetchUsersWeapons = (studentId: string) => {
+    setUsersLoading(true);
+    fetch("/api/admin/users/weapons", {
+      headers: {
+        "X-Student-Id": studentId,
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          setUsers(data.users || []);
+        }
+      })
+      .finally(() => setUsersLoading(false));
   };
 
   // 打开编辑弹窗
@@ -221,6 +267,70 @@ export default function AdminPage() {
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="h-8" />
+
+        <header className="mb-4">
+          <h2 className="text-xl font-bold text-zinc-100">玩家武器详情</h2>
+          <p className="text-zinc-400 text-sm">查看所有玩家背包明细（管理员）</p>
+        </header>
+
+        <div className="glass-card rounded-xl overflow-hidden">
+          <Table>
+            <TableHeader className="bg-white/5">
+              <TableRow className="border-white/5 hover:bg-white/5">
+                <TableHead className="text-zinc-400">Student ID</TableHead>
+                <TableHead className="text-zinc-400">Role</TableHead>
+                <TableHead className="text-zinc-400">Items</TableHead>
+                <TableHead className="text-zinc-400">Weapons</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {usersLoading ? (
+                <TableRow className="border-white/5">
+                  <TableCell className="text-zinc-500" colSpan={4}>Loading...</TableCell>
+                </TableRow>
+              ) : users.length === 0 ? (
+                <TableRow className="border-white/5">
+                  <TableCell className="text-zinc-500" colSpan={4}>暂无数据</TableCell>
+                </TableRow>
+              ) : users.map((u) => (
+                <TableRow key={u.student_id} className="border-white/5 hover:bg-white/5 transition-colors align-top">
+                  <TableCell className="font-medium text-zinc-200">{u.student_id}</TableCell>
+                  <TableCell>
+                    <span className="px-2 py-1 rounded bg-white/5 text-xs text-zinc-300 border border-white/10">
+                      {u.role}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-zinc-300 font-mono">{u.inventory_count}</TableCell>
+                  <TableCell className="text-zinc-300">
+                    {u.inventory_count === 0 ? (
+                      <span className="text-zinc-500">(empty)</span>
+                    ) : (
+                      <div className="space-y-1">
+                        {u.inventory.slice(0, 6).map((it, idx) => (
+                          <div key={idx} className="text-sm">
+                            <span className="text-zinc-200">{it.weapon?.full_name || it.weapon_name}</span>
+                            <span className="text-zinc-500"> · ammo {it.ammo_count}</span>
+                            {typeof it.weapon?.damage === "number" && (
+                              <span className="text-zinc-500"> · dmg {it.weapon.damage}</span>
+                            )}
+                            {typeof it.weapon?.stats?.fire_rate === "number" && it.weapon.stats.fire_rate > 0 && (
+                              <span className="text-zinc-500"> · rpm {Math.round(60 / it.weapon.stats.fire_rate)}</span>
+                            )}
+                          </div>
+                        ))}
+                        {u.inventory.length > 6 && (
+                          <div className="text-xs text-zinc-500">... +{u.inventory.length - 6} more</div>
+                        )}
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
