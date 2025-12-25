@@ -102,7 +102,7 @@ def process_dataset():
     for sub in sub_dirs:
         dir_path = os.path.join(DATA_DIR, sub)
         if not os.path.exists(dir_path):
-            print(f"⚠️ 警告: 找不到目录 {dir_path}，请检查解压路径！")
+            print(f"警告: 找不到目录 {dir_path}，请检查解压路径！")
             continue
             
         for f in os.listdir(dir_path):
@@ -110,7 +110,7 @@ def process_dataset():
                 # 记录: (完整路径, 来源集合, 文件名)
                 file_list.append((os.path.join(dir_path, f), sub, f))
     
-    print(f"🔍 共发现 {len(file_list)} 个音频文件，开始提取特征...")
+    print(f"共发现 {len(file_list)} 个音频文件，开始提取特征...")
     
     # 使用 tqdm 显示进度条
     for file_path, dataset_type, filename in tqdm(file_list):
@@ -131,10 +131,10 @@ def process_dataset():
     if all_data:
         df = pd.DataFrame(all_data)
         df.to_csv(OUTPUT_FILE, index=False)
-        print(f"\n✅ 特征提取完成！已保存至 {OUTPUT_FILE}")
+        print(f"\n特征提取完成！已保存至 {OUTPUT_FILE}")
         print(f"数据预览:\n{df.head()}")
     else:
-        print("❌ 没有提取到任何数据，请检查路径。")
+        print("没有提取到任何数据，请检查路径。")
 
 if __name__ == "__main__":
     # 安装必要的库 (以防万一)

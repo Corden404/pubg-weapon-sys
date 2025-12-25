@@ -49,7 +49,7 @@ class TestModelLoading:
                 # 断言
                 assert result is not None
                 assert result['models']['distance'] == "fake_rf_dist"
-                print("\n✅ 本地模型加载逻辑验证通过")
+                print("\n本地模型加载逻辑验证通过")
 
     def test_load_local_models_missing_file(self):
         """
@@ -63,4 +63,4 @@ class TestModelLoading:
             
             # 断言应该返回 None (根据你的代码逻辑)
             assert result is None
-            print("\n✅ 模型缺失容错逻辑验证通过")
+            print("\n模型缺失容错逻辑验证通过")

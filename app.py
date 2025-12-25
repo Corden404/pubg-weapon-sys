@@ -5,7 +5,7 @@ from ui.main_tabs import render_main_app
 # 全局配置
 st.set_page_config(
     page_title="PUBG 武器系统 (Refactored)",
-    page_icon="🔫",
+    page_icon="PUBG",
     layout="wide"
 )
 

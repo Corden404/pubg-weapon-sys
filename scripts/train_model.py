@@ -46,7 +46,7 @@ def train():
         
         # 评估
         acc = accuracy_score(y_test, clf.predict(X_test))
-        print(f"   ✅ {task_name} 准确率: {acc:.4f}")
+        print(f"   {task_name} 准确率: {acc:.4f}")
         
         # 存入字典
         trained_models[task_name] = clf
@@ -58,7 +58,7 @@ def train():
         "feature_names": list(X.columns)
     }
     joblib.dump(final_package, MODEL_FILE)
-    print("🎉 全部完成！")
+    print("全部完成！")
 
 if __name__ == "__main__":
     train()

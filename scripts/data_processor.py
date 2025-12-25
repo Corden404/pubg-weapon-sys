@@ -26,10 +26,10 @@ def get_db_connection():
         # 连接 MongoDB
         client = MongoClient(uri, server_api=ServerApi('1'))
         client.admin.command('ping') # 测试连接
-        print("✅ 数据库连接成功！")
+        print("数据库连接成功！")
         return client.pubg_sys # 返回数据库对象
     except Exception as e:
-        print(f"❌ 连接失败: {e}")
+        print(f"连接失败: {e}")
         return None
 
 def process_audio_features(db):
@@ -37,7 +37,7 @@ def process_audio_features(db):
     csv_path = "data/raw/test_selected_features.csv"
     
     if not os.path.exists(csv_path):
-        print(f"⚠️ 未找到文件: {csv_path}，跳过声音数据导入。")
+        print(f"未找到文件: {csv_path}，跳过声音数据导入。")
         return
 
     print(f"正在读取 {csv_path} ...")
@@ -59,7 +59,7 @@ def process_audio_features(db):
     
     # 批量插入
     db.audio_features.insert_many(data_dict)
-    print(f"🚀 成功导入 {len(data_dict)} 条声音特征数据！")
+    print(f"成功导入 {len(data_dict)} 条声音特征数据！")
     
     # --- 自动生成武器图鉴 (根据 CSV 里的武器名) ---
     # 这是作业要求的“武器管理”基础数据
@@ -79,7 +79,7 @@ def process_audio_features(db):
     
     if new_weapons:
         db.game_weapons.insert_many(new_weapons)
-        print(f"🔫 自动在这个 game_weapons 表中补充了 {len(new_weapons)} 种新武器：{unique_weapons}")
+        print(f"自动在这个 game_weapons 表中补充了 {len(new_weapons)} 种新武器：{unique_weapons}")
 
 if __name__ == "__main__":
     # 主程序入口
@@ -87,4 +87,4 @@ if __name__ == "__main__":
     if db is not None:
         # 执行导入逻辑
         process_audio_features(db)
-        print("\n🎉 数据初始化脚本运行结束！")
+        print("\n数据初始化脚本运行结束！")

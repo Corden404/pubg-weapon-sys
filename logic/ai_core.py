@@ -66,11 +66,11 @@ def load_local_models():
         model_path = os.path.join(project_root, "data", "processed", "weapon_classifier.pkl")
         
         # 调试打印，让你确认路径对不对
-        print(f"🔍 正在尝试加载模型，路径: {model_path}")
+        print(f"正在尝试加载模型，路径: {model_path}")
 
         if os.path.exists(model_path):
             model = joblib.load(model_path)
-            print("✅ 本地模型加载成功！")
+            print("本地模型加载成功！")
             return model
         else:
             print("错误：模型文件不存在于该路径。")

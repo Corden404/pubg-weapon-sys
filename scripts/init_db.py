@@ -33,7 +33,7 @@ def get_db_connection():
 		client.admin.command("ping")
 		return client.pubg_sys
 	except Exception as e:
-		print(f"❌ 连接失败: {e}")
+		print(f"连接失败: {e}")
 		return None
 
 
@@ -58,13 +58,13 @@ def ensure_admin(db):
 				"created_at": datetime.now(),
 			}
 		)
-		print(f"✅ 已创建管理员账号: {admin_id}")
+		print(f"已创建管理员账号: {admin_id}")
 	else:
 		if existing.get("role") != "admin":
 			db.users.update_one({"student_id": admin_id}, {"$set": {"role": "admin"}})
-			print(f"✅ 已将用户 {admin_id} 升级为管理员")
+			print(f"已将用户 {admin_id} 升级为管理员")
 		else:
-			print(f"ℹ️ 管理员账号已存在: {admin_id}")
+			print(f"管理员账号已存在: {admin_id}")
 
 
 if __name__ == "__main__":

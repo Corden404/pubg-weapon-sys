@@ -8,7 +8,7 @@ from logic.ai_core import load_local_models, extract_features, predict_cloud
 from utils.logger import log_action
 
 # ==============================================================================
-# 🎨 核心样式注入 (The Glassmorphism Engine)
+# 核心样式注入 (The Glassmorphism Engine)
 # ==============================================================================
 def inject_glass_styles():
     st.markdown("""
@@ -145,7 +145,7 @@ def inject_glass_styles():
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🧩 HTML 组件生成器 (模拟 React 组件)
+# HTML 组件生成器 (模拟 React 组件)
 # ==============================================================================
 def render_stat_card(title, value, sub_label, trend, trend_val, color_class, icon_emoji):
     """
@@ -181,7 +181,7 @@ def render_stat_card(title, value, sub_label, trend, trend_val, color_class, ico
     st.markdown(html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🚀 主程序逻辑
+# 主程序逻辑
 # ==============================================================================
 def render_main_app():
     inject_glass_styles() # 注入 CSS
@@ -224,20 +224,20 @@ def render_main_app():
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        render_stat_card("军械库总储备", f"{total_ammo:,}", "战术评估值: High", "down", "3.5%", "amber", "⚔️")
+        render_stat_card("军械库总储备", f"{total_ammo:,}", "战术评估值: High", "down", "3.5%", "amber", "AMMO")
     with col2:
-        render_stat_card("武器库存量", str(len(inventory)), "件现役装备", "up", "12%", "blue", "📦")
+        render_stat_card("武器库存量", str(len(inventory)), "件现役装备", "up", "12%", "blue", "BOX")
     with col3:
-        render_stat_card("系统负载", "42%", "运行状态良好", "up", "Stable", "emerald", "⚡")
+        render_stat_card("系统负载", "42%", "运行状态良好", "up", "Stable", "emerald", "SYS")
     with col4:
-        render_stat_card("安全威胁", "0", "当前区域安全", "down", "Clean", "rose", "🛡️")
+        render_stat_card("安全威胁", "0", "当前区域安全", "down", "Clean", "rose", "SAFE")
 
     st.write("") # Spacer
 
     # --- 2. 主功能 Tabs (Glassmorphism Container) ---
     # 我们不在整个 tab 外面包 div，而是尽量让 tab 内容看起来像是在玻璃上
     
-    t1, t2, t3, t4 = st.tabs(["📊 资产概览", "📚 武器图鉴", "🛠️ 系统管理", "🎙️ 声音侦测"])
+    t1, t2, t3, t4 = st.tabs(["资产概览", "武器图鉴", "系统管理", "声音侦测"])
 
     # --- Tab 1: 资产概览 ---
     with t1:
@@ -265,7 +265,7 @@ def render_main_app():
                     st.markdown(f"""
                     <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
                         <div style="display: flex; gap: 10px; align-items: center;">
-                            <div style="background: rgba(16,185,129,0.2); color: #34d399; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">🔫</div>
+                            <div style="background: rgba(16,185,129,0.2); color: #34d399; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">W</div>
                             <div>
                                 <div style="color: #e2e8f0; font-size: 14px; font-weight: bold;">{row['weapon_name']}</div>
                                 <div style="color: #64748b; font-size: 12px;">突击步枪</div>
@@ -281,7 +281,7 @@ def render_main_app():
                 # 丢弃功能
                 st.markdown("<br>", unsafe_allow_html=True)
                 to_remove = st.selectbox("选择丢弃物资", df_inv['weapon_name'].unique(), key='inv_rem')
-                if st.button("🗑️ 确认丢弃"):
+                if st.button("确认丢弃"):
                     db.users.update_one({"student_id": user['student_id']}, {"$pull": {"inventory": {"weapon_name": to_remove}}})
                     log_action(db, user['student_id'], "INVENTORY_REMOVE", f"丢弃 {to_remove}")
                     st.rerun()
@@ -297,7 +297,7 @@ def render_main_app():
         # Search Bar
         col_s1, col_s2 = st.columns([3, 1])
         with col_s1:
-            search_txt = st.text_input("🔍 检索武器数据库...", placeholder="输入型号...")
+            search_txt = st.text_input("检索武器数据库...", placeholder="输入型号...")
         
         df_w = pd.DataFrame(weapons)
         if search_txt and not df_w.empty:
@@ -319,7 +319,7 @@ def render_main_app():
                         st.caption(f"{row['type']}")
                     
                     val = st.number_input("Qty", 1, 999, 30, key=f"n_{idx}", label_visibility="collapsed")
-                    if st.button("➕ 入库", key=f"b_{idx}", use_container_width=True):
+                    if st.button("入库", key=f"b_{idx}", use_container_width=True):
                          item = {"weapon_name": row['name'], "ammo_count": val, "added_at": datetime.now()}
                          db.users.update_one({"student_id": user['student_id']}, {"$push": {"inventory": item}})
                          log_action(db, user['student_id'], "ADD_ITEM", item)
@@ -330,7 +330,7 @@ def render_main_app():
     # --- Tab 3: 管理 ---
     with t3:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.warning("⚠️ 核心数据修改区域")
+        st.warning("核心数据修改区域")
         if not df_w.empty:
             target = st.selectbox("选择编辑对象", df_w['name'].unique())
             curr = db.game_weapons.find_one({"name": target})
@@ -339,10 +339,10 @@ def render_main_app():
             n_dmg = c1.number_input("Damage", value=int(curr.get('damage', 0)))
             n_type = c2.text_input("Type", value=curr.get('type', 'Unknown'))
             
-            if st.button("💾 更新数据库记录"):
-                 db.game_weapons.update_one({"name": target}, {"$set": {"damage": n_dmg, "type": n_type}})
-                 log_action(db, user['student_id'], "ADMIN_UPDATE", {"target": target})
-                 st.success("Done")
+            if st.button("更新数据库记录"):
+                db.game_weapons.update_one({"name": target}, {"$set": {"damage": n_dmg, "type": n_type}})
+                log_action(db, user['student_id'], "ADMIN_UPDATE", {"target": target})
+                st.success("Done")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # --- Tab 4: AI ---
@@ -351,14 +351,14 @@ def render_main_app():
         
         with c_ai_l:
             st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-            st.markdown("### 📡 信号源")
+            st.markdown("### 信号源")
             uploaded = st.file_uploader("Upload Audio", type=["mp3", "wav"])
-            start = st.button("🚀 启动分析", use_container_width=True)
+            start = st.button("启动分析", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
         with c_ai_r:
             st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-            st.markdown("### 🎯 分析结果")
+            st.markdown("### 分析结果")
             
             if uploaded and start:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:

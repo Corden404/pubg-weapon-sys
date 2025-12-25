@@ -30,16 +30,16 @@ def init_connection():
         #    （Codespaces / 服务器环境一般都推荐这种方式）
         if "MONGO_URI" in os.environ:
             uri = os.environ["MONGO_URI"]
-            # print("✅ 使用环境变量连接") # 调试用
+            # print("使用环境变量连接") # 调试用
             
         # 2) 其次用 Streamlit 的 secrets.toml：适合本地/课堂演示。
         elif hasattr(st, "secrets") and "mongo" in st.secrets:
             uri = st.secrets["mongo"]["uri"]
-            # print("✅ 使用本地 secrets.toml 连接") # 调试用
+            # print("使用本地 secrets.toml 连接") # 调试用
             
         # 3) 两边都没找到就直接报错：没有 DB 连接，一切功能都跑不起来。
         if uri is None:
-            st.error("❌ 未找到数据库配置！请检查 .streamlit/secrets.toml 或 环境变量 MONGO_URI")
+            st.error("未找到数据库配置！请检查 .streamlit/secrets.toml 或 环境变量 MONGO_URI")
             return None
 
         return MongoClient(uri, server_api=ServerApi('1'))

@@ -298,14 +298,14 @@ def get_db_connection():
         uri = config["mongo"]["uri"]
         return MongoClient(uri, server_api=ServerApi('1')).pubg_sys
     except Exception as e:
-        print(f"❌ 连接失败: {e}")
+        print(f"连接失败: {e}")
         return None
 
 def update_database():
     db = get_db_connection()
     if db is None: return
 
-    print("🚀 开始批量更新武器详细属性...")
+    print("开始批量更新武器详细属性...")
     
     updated_count = 0
     
@@ -331,12 +331,12 @@ def update_database():
         )
         
         if result.matched_count > 0:
-            print(f"✅ 已更新: {short_name} -> {data['full_name']}")
+            print(f"已更新: {short_name} -> {data['full_name']}")
             updated_count += 1
         else:
-            print(f"⚠️ 跳过: 数据库中没找到名为 '{short_name}' 的武器")
+            print(f"跳过: 数据库中没找到名为 '{short_name}' 的武器")
 
-    print(f"\n🎉 更新完成！共更新了 {updated_count} 把武器的数据。")
+    print(f"\n更新完成！共更新了 {updated_count} 把武器的数据。")
 
 if __name__ == "__main__":
     update_database()

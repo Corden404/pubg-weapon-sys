@@ -11,7 +11,7 @@ def _get_reserved_admin_id() -> str:
     return os.getenv("ADMIN_STUDENT_ID", "admin")
 
 def render_login():
-    st.markdown("<h1 style='text-align: center;'>🔐 PUBG 综合实训系统</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>PUBG 综合实训系统</h1>", unsafe_allow_html=True)
     
     db = get_db()
     if db is None: return
@@ -39,7 +39,7 @@ def render_login():
                 else:
                     # --- 日志记录 (安全审计) ---
                     logger.warning(f"登录失败: 用户 {username} 密码错误或账号不存在")
-                    st.error("❌ 账号或密码错误")
+                    st.error("账号或密码错误")
 
         with tab2:
             new_user = st.text_input("输入学号注册")
@@ -67,4 +67,4 @@ def render_login():
                     # --- 日志记录 ---
                     log_action(db, new_user, "REGISTER", "新用户注册成功")
                     
-                    st.success("✅ 注册成功！请登录。")
+                    st.success("注册成功！请登录。")
